@@ -1,0 +1,93 @@
+#!/bin/bash
+USAGE="copy_files_cumulative_limit.sh <source_directory> <destination_directory> <file_list_file> <allowed_space_in_mb>"
+
+handle_error() {
+  local message=$1
+
+  echo "ERROR: $message" >&2
+  echo "Usage: $USAGE" >&2
+  exit 1
+}
+
+validate_input() {
+  local input=$1
+  local error_message=$2
+  local validation=$3
+
+  if [[ -z "$input" ]] || ( [[ -n $validation ]] && ! $validation "$input" ); then
+    handle_error "$error_message"
+  fi
+}
+
+file_exists() {
+  [[ -f "$1" ]]
+}
+
+dir_exists() {
+  [[ -d "$1" ]]
+}
+
+is_numeric() {
+  [[ $1 =~ ^[0-9]+$ ]]
+}
+
+copy_file() {
+  local src_dir=$1
+  local file=$2
+  local src_file="$src_dir/$file"
+  local dest_dir=$3
+
+  if [[ -e "$src_file" ]]; then
+    cp "$src_file" "$dest_dir" || {
+      handle_error "Copy failed: $dest_dir/$file"
+    }
+  else
+    handle_error "File does not exist: $file"
+  fi
+}
+
+get_used_space_in_mb() {
+  df -m "$1" | awk 'NR==2 {print $3}'
+}
+
+prepare_dst_dir() {
+  mkdir -p "$1" 2>/dev/null
+}
+
+copy_files_in_list() {
+  local src_dir=$1
+  local dest_dir=$2
+  local file_list=$3
+  local allowed_space_mb=$4
+  local starting_space=$(get_used_space_in_mb "$dest_dir")
+
+  while IFS= read -r file || [[ -n "$file" ]]; do
+    local next_file_size=$(($(get_used_space_in_mb "$dest_dir") - starting_space + $(du -sm "${src_dir}/${file}" | cut -f 1)))
+    if (( next_file_size > allowed_space_mb )); then
+      echo "INFO: Space limit would be exceeded by copying $file (size: ${next_file_size}MB, limit: ${allowed_space_mb}MB)" >&2
+      break
+    fi
+    copy_file "$src_dir" "$file" "$dest_dir/"
+  done < "$file_list"
+}
+
+function main() {
+  local src_dir=$1
+  local dst_dir=$2
+  local file_list=$3
+  local allowed_space_mb=$4
+
+  validate_input "$src_dir" "No source directory provided"
+  validate_input "$src_dir" "Source directory $src_dir does not exist" dir_exists
+  validate_input "$dst_dir" "No destination directory provided"
+  validate_input "$file_list" "No file list provided"
+  validate_input "$file_list" "File list $file_list does not exist" file_exists
+  validate_input "$allowed_space_mb" "No space limit provided"
+  validate_input "$allowed_space_mb" "$allowed_space_mb is not numeric" is_numeric
+
+  prepare_dst_dir "$dst_dir"
+
+  copy_files_in_list "$src_dir" "$dst_dir" "$file_list" "$allowed_space_mb"
+}
+
+main "$@"

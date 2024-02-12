@@ -1,5 +1,5 @@
 #!/bin/bash
-USAGE="copy_files_cumulative_limit.sh <source_directory> <destination_directory> <file_list_file> <allowed_space_in_mb>"
+USAGE="cp-limit-mb.sh <source_directory> <destination_directory> <file_list_file> <allowed_space_in_mb>"
 
 handle_error() {
   local message=$1
